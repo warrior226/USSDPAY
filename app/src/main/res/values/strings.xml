@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">aMobileMhelthPay</string>
+    <!-- TODO: Remove or change this placeholder text -->
+    <string name="hello_blank_fragment">Hello blank fragment</string>
+    <string name="mhealth_pay_mobile">LAGFO</string>
+    <string name="beneficiaire">Bénéficiaire: %1$s</string>
+    <string name="montant_transfere">Montant à transférer: %1$s</string>
+    <string name="operateur">Opérateur: %1$s</string>
+    <string name="contact">Contact: %1$s</string>
+    <string name="date_operation">Date de l\'opération: %1$s</string>
+    <string name="date_execution">Info: %1$s</string>
+    <string name="acc_service_description">Implemented By Patrick RAYAISSE\n</string>
+    <string name="normal">Normal Dial-up</string>
+</resources>

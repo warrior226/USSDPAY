@@ -1,0 +1,84 @@
+[versions]
+agp = "9.0.1"
+kotlin = "2.2.10"
+coreKtx = "1.16.0"
+junit = "4.13.2"
+junitVersion = "1.2.1"
+espressoCore = "3.6.1"
+appcompat = "1.7.1"
+material = "1.12.0"
+activity = "1.10.1"
+constraintlayout = "2.2.1"
+room="2.7.2"
+glide="4.16.0"
+kspVersion= "2.3.2"
+dagger-hilt-version="2.56.2"
+sdpSsp = "1.1.1"
+timber = "5.0.1"
+easyPermission="3.0.0"
+badge="2.0.0"
+qrcode="2.3.2"
+pdf = "3.2.0-beta.3"
+viewpager = "1.1.0"
+navigationFragmentKtx = "2.9.0"
+navigationUiKtx = "2.9.0"
+navigation = "2.9.6"
+barcode="4.3.0"
+playServicesLocation = "21.3.0"
+retrofit = "2.11.0"
+okhttp = "5.0.0-alpha.14"
+eventbus = "3.3.1"
+ussd="1.4.a"
+
+
+
+
+
+
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
+androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+androidx-activity = { group = "androidx.activity", name = "activity", version.ref = "activity" }
+androidx-constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
+androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+androidx-room-room = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+androidx-glide={group="com.github.bumptech.glide",name="glide",version.ref="glide"}
+androidx-hilt-android={group="com.google.dagger",name="hilt-android",version.ref="dagger-hilt-version"}
+hilt-android-compiler={group="com.google.dagger",name="hilt-android-compiler",version.ref="dagger-hilt-version"}
+sdp = { group = "com.intuit.sdp", name = "sdp-android", version.ref = "sdpSsp" }
+ssp = { group = "com.intuit.ssp", name = "ssp-android", version.ref = "sdpSsp" }
+glide-compiler = { group = "com.github.bumptech.glide", name = "compiler", version.ref = "glide" }
+timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
+pdf = { module = "com.github.mhiew:android-pdf-viewer", version.ref = "pdf" }
+badge = { module = "io.github.nikartm:image-support", version.ref = "badge" }
+easy-permission = { module = "pub.devrel:easypermissions", version.ref = "easyPermission" }
+androidx-viewpager2 = { group = "androidx.viewpager2", name = "viewpager2", version.ref = "viewpager" }
+androidx-navigation-fragment = { group = "androidx.navigation", name = "navigation-fragment-ktx", version.ref = "navigationFragmentKtx" }
+androidx-navigation-ui = { group = "androidx.navigation", name = "navigation-ui-ktx", version.ref = "navigationUiKtx" }
+journeyapps={group="com.journeyapps",name="zxing-android-embedded",version.ref="barcode"}
+play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
+okhttp = {group="com.squareup.okhttp3", name="logging-interceptor", version.ref="okhttp"}
+retrofit = {group="com.squareup.retrofit2", name="retrofit", version.ref="retrofit"}
+moshi = {group="com.squareup.retrofit2", name="converter-moshi", version.ref="retrofit"}
+eventbus = { module = "org.greenrobot:eventbus", version.ref = "eventbus" }
+gson-converter={group="com.squareup.retrofit2", name="converter-gson", version.ref="retrofit"}
+scalars = { module = "com.squareup.retrofit2:converter-scalars", version.ref = "retrofit" }
+ussd-library={module="com.github.romellfudi.VoIpUSSD:kotlin-ussd-library",version.ref="ussd"}
+
+
+
+
+
+[plugins]
+androidApplication = { id = "com.android.application", version.ref = "agp" }
+jetbrainsKotlinAndroid = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+ksp={id="com.google.devtools.ksp",version.ref="kspVersion"}
+dagger-hilt={id="com.google.dagger.hilt.android",version.ref="dagger-hilt-version"}
+safeArgs = { id = "androidx.navigation.safeargs.kotlin", version.ref = "navigation" }
+
