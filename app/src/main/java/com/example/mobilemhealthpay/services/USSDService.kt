@@ -8,6 +8,7 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.example.mobilemhealthpay.data.entity.TransactionInfoTable
+import com.example.mobilemhealthpay.utils.FailureReason
 import com.example.mobilemhealthpay.utils.Global
 import com.example.mobilemhealthpay.utils.SharedRepository
 import com.example.mobilemhealthpay.viewmodel.TransactionViewModel
@@ -47,33 +48,33 @@ class USSDService : AccessibilityService() {
             Log.d("TAG", "onAccessibilityEvent: Text = ${it.text}")
 
             //Mise à jour du status et validation de la transaction
-            if(it.text.contains("")){
-                serviceScope.launch {
-                    repository.transactionInfo.collect { transaction ->
-                        if(transaction!=null){
-                            transaction.copy(comment = it.text.toString(), status = 1)
-                            val transactionTable = TransactionInfoTable(
-                                id = null, // Let Room auto-generate
-                                user_id = transaction.user_id,
-                                montant = transaction.montant,
-                                transactionId = transaction.transaction_id,
-                                numero = transaction.numero,
-                                operateur = transaction.operateur,
-                                comment = transaction.comment, // Update with USSD response
-                                date_creation = transaction.date_creation,
-                                status = 1 // Success status
-                            )
-                            //Save transaction
-                           repository.registerTransaction(transactionTable)
-                            //L'operation s'est bien passée, la prochaine transaction peut etre lancée
-                            repository.updateOperationState(true)
-                        }
-
-                    }
-
-                }
-
-            }
+//            if(it.text.contains("")){
+//                serviceScope.launch {
+//                    repository.transactionInfo.collect { transaction ->
+//                        if(transaction!=null){
+//                            transaction.copy(comment = it.text.toString(), status = 1)
+//                            val transactionTable = TransactionInfoTable(
+//                                id = null, // Let Room auto-generate
+//                                user_id = transaction.user_id,
+//                                montant = transaction.montant,
+//                                transactionId = transaction.transactionId,
+//                                numero = transaction.numero,
+//                                operateur = transaction.operateur,
+//                                comment = transaction.comment, // Update with USSD response
+//                                date_creation = transaction.date_creation,
+//                                status = 1 // Success status
+//                            )
+//                            //Save transaction
+//                           repository.registerTransaction(transactionTable)
+//                            //L'operation s'est bien passée, la prochaine transaction peut etre lancée
+//                            repository.updateOperationState(true)
+//                        }
+//
+//                    }
+//
+//                }
+//
+//            }
 
 
             if (it.className == "android.app.AlertDialog" ||
@@ -184,15 +185,28 @@ class USSDService : AccessibilityService() {
     private fun dismissDialog(node: AccessibilityNodeInfo) {
         // Find Cancel/Close button
         findAndClickButton(node, "Cancel", "Close", "Annuler", "Fermer","OK")
-        ussdRunning = false
+     //   ussdRunning = false
+
+        // Signal success to the processor
+        repository.signalOperationComplete(SharedRepository.UssdResult.Success)
     }
 
     private fun determineResponse(ussdText: String): String? {
         // Implement your logic here based on the USSD menu
         // Return the option number/text to send, or null if done
-
         return when {
-            ussdText.contains("2.Transfert d'argent") -> "2"
+            ussdText.contains("solde insuffisant", ignoreCase = true) -> {
+                repository.signalOperationComplete(
+                    SharedRepository.UssdResult.InsufficientFunds
+                )
+                null
+            }
+            ussdText.contains("Echec", ignoreCase = true) -> {
+                repository.signalOperationComplete(
+                    SharedRepository.UssdResult.Failure(FailureReason.USSD_REJECTED)
+                )
+                null
+            }
             ussdText.contains("1.National") -> "1"
             ussdText.contains("Saisir le numero beneficiaire") -> "1"
             ussdText.contains("Saisir le montant du transfert") -> "50"

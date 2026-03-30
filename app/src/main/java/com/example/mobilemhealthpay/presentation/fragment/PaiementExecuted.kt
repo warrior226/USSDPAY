@@ -58,7 +58,7 @@ class PaiementExecuted : Fragment() {
                     val adapterItems = joinedList.map { transaction ->
                         TransactionInfoItem(
                             montant = transaction.montant,
-                            transactionId = transaction.transaction_id,
+                            transactionId = transaction.transactionId,
                             numero = transaction.numero,
                             operateur = transaction.operateur,
                             dateCreation = transaction.date_creation,

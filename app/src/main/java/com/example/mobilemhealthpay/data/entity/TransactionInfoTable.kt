@@ -29,7 +29,11 @@ data class TransactionInfoTable(
     @ColumnInfo("date_creation")
     var date_creation:String="",
     @ColumnInfo("status")
-    var status:Int=0
+    var status:Int=0,
+    @ColumnInfo("tentative")
+    val retryCount: Int= 0,
+    @ColumnInfo("lastAttemptDate")
+    val lastAttemptAt: Long= 0L
 ){
     // Secondary constructor without parameters
     constructor() : this(null, 0, 0, "", "", "", null, "",  0)

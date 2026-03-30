@@ -65,8 +65,10 @@ class PaiementEnCoursFragment() : Fragment() {
         // Your existing code...
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                initObserver()
-                oberveViewModel()
+                //initObserver()
+               // oberveViewModel()
+                observeApiResponse()
+                observeDatabase()
 
             }
         }
@@ -103,7 +105,7 @@ class PaiementEnCoursFragment() : Fragment() {
 //                        )
                         TransactionInfoItem(
                             montant = transaction.montant,
-                            transactionId = transaction.transaction_id,
+                            transactionId = transaction.transactionId,
                             numero = transaction.numero,
                             operateur = transaction.operateur,
                             dateCreation = transaction.date_creation,
@@ -113,24 +115,24 @@ class PaiementEnCoursFragment() : Fragment() {
                     }
                     setRecyclerView(adapterItems)
                     //Launch Ussd then
-                    for(transaction in joinedList){
-//                        repository.updateTransactionInfo(transaction)
-//                        //Si une transaction a été traitée
-//                        while(repository.operationState.value){
-//                            launchUssdCode(transaction.numero,transaction.montant)
-//                            if(!transaction.comment.isNullOrEmpty()){
-//                                viewModel.validateTransaction(transaction.transaction_id,transaction.comment.trim(), encryptWithHmacSha256(transactionInfoTable.montant.toString() + transactionInfoTable.operateur + "##" + transactionInfoTable.transactionId, "--" + transactionInfoTable.transactionId + "--"), Global.token)
-//                                repository.updateOperationState(false)
-//
-//                            }
-//                        }
-//
-//                        do {
-//
-//                            launchUssdCode(transaction.numero,transaction.montant)
-//
-//                        }while (repository.operationState.value)
-                    }
+//                    for(transaction in joinedList){
+////                        repository.updateTransactionInfo(transaction)
+////                        //Si une transaction a été traitée
+////                        while(repository.operationState.value){
+////                            launchUssdCode(transaction.numero,transaction.montant)
+////                            if(!transaction.comment.isNullOrEmpty()){
+////                                viewModel.validateTransaction(transaction.transaction_id,transaction.comment.trim(), encryptWithHmacSha256(transactionInfoTable.montant.toString() + transactionInfoTable.operateur + "##" + transactionInfoTable.transactionId, "--" + transactionInfoTable.transactionId + "--"), Global.token)
+////                                repository.updateOperationState(false)
+////
+////                            }
+////                        }
+////
+////                        do {
+////
+////                            launchUssdCode(transaction.numero,transaction.montant)
+////
+////                        }while (repository.operationState.value)
+//                    }
                 } else {
                     binding.info.visibility = View.VISIBLE
                     binding.scrollView.visibility = View.INVISIBLE
@@ -257,6 +259,93 @@ class PaiementEnCoursFragment() : Fragment() {
         mac.init(secretKeySpec)
         val hash = mac.doFinal(data.toByteArray())
         return Base64.getEncoder().encodeToString(hash)
+    }
+
+    // ----- Observe API Response → Save to DB -----
+
+    private fun observeApiResponse() {
+        viewModel.getTransactionResult.observe(viewLifecycleOwner) { result ->
+            if (result is Resource.Success<*>) {
+                val data = result.data
+                if (data is TransactionResponseEntity && data.status == 1) {
+                    data.data.forEach { transactionInfo ->
+                        val table = TransactionInfoTable(
+                            user_id       = transactionInfo.user_id,
+                            montant       = transactionInfo.montant,
+                            transactionId = transactionInfo.transaction_id,
+                            numero        = transactionInfo.numero,
+                            operateur     = transactionInfo.operateur,
+                            comment       = transactionInfo.comment,
+                            date_creation = transactionInfo.date_creation
+                        )
+                        viewModel.registerTransaction(table)
+                    }
+                }
+            }
+        }
+    }
+
+    // ----- Observe Room DB → Render UI + Start Processor -----
+
+    private fun observeDatabase() {
+        appDataBase.transactionDao()
+            .getTransactionEnCoursFromDb()  // LiveData of status=0 transactions
+            .observe(viewLifecycleOwner) { pendingList ->
+                if (pendingList.isNotEmpty()) {
+                    binding.info.visibility    = View.INVISIBLE
+                    binding.scrollView.visibility = View.VISIBLE
+                    binding.button.visibility  = View.INVISIBLE
+                    showLoader(false)
+
+                    val adapterItems = pendingList.map { tx ->
+                        TransactionInfoItem(
+                            montant       = tx.montant,
+                            transactionId = tx.transactionId,
+                            numero        = tx.numero,
+                            operateur     = tx.operateur,
+                            dateCreation  = tx.date_creation,
+                            comment       = tx.comment ?: "",
+                            status        = tx.status
+                        )
+                    }
+                    setRecyclerView(adapterItems)
+
+                    // Enqueue and start processing
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        repository.enqueueTransactions(pendingList)
+                        startProcessing()
+                    }
+
+                } else {
+                    binding.info.visibility    = View.VISIBLE
+                    binding.scrollView.visibility = View.INVISIBLE
+                    binding.button.visibility  = View.VISIBLE
+                }
+            }
+    }
+
+    // ----- Sequential Processor Launcher -----
+
+    private suspend fun startProcessing() {
+        repository.startProcessing(
+            onLaunchUssd = { numero, montant ->
+                launchUssdCode(numero, montant)
+            },
+            onValidate = { transactionId, comment,montant,operateur ->
+                viewModel.validateTransaction(transactionId, comment.trim(),encryptWithHmacSha256("$montant$operateur##$transactionId","--$transactionId--"),Global.token)
+            },
+            onTransactionFailed = { failedTransaction ->
+                Log.d("TAG", "Transaction failed: ${failedTransaction.transactionId} — ${failedTransaction.comment}")
+                viewModel.validateTransaction(failedTransaction.transactionId, failedTransaction.comment!!.trim(),encryptWithHmacSha256("${failedTransaction.montant}${failedTransaction.operateur}##${failedTransaction.transactionId}","--${failedTransaction.transactionId}--"),Global.token)
+            },
+            onInsufficientFunds = { transaction ->
+//                requireActivity().runOnUiThread {
+//                    showInsufficientFundsDialog()
+//                }
+                viewModel.validateTransaction(transaction.transactionId, transaction.comment!!.trim(),encryptWithHmacSha256("${transaction.montant}${transaction.operateur}##${transaction.transactionId}","--${transaction.transactionId}--"),Global.token)
+
+            }
+        )
     }
 
 

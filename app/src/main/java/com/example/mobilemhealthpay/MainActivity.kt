@@ -22,6 +22,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.example.mobilemhealthpay.databinding.ActivityMainBinding
 import com.example.mobilemhealthpay.presentation.viewmodel.PaiementViewModel
 import com.example.mobilemhealthpay.presentation.viewmodel.UiState
+import com.example.mobilemhealthpay.services.TransactionPollingService
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 
@@ -47,7 +48,7 @@ class MainActivity : AppCompatActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-
+        startPollingService()
         // Setup connectivity observer
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -260,6 +261,11 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Please grant CALL_PHONE permission first", Toast.LENGTH_SHORT).show()
             checkAndRequestPermissions()
         }
+    }
+
+    private fun startPollingService() {
+        val intent = Intent(this, TransactionPollingService::class.java)
+        startForegroundService(intent)  // Android 8+
     }
 }
 

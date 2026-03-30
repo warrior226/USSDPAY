@@ -10,6 +10,7 @@ import androidx.room.Update
 import com.example.mobilemhealthpay.data.entity.PaiementEntity
 import com.example.mobilemhealthpay.data.entity.TransactionInfoEntity
 import com.example.mobilemhealthpay.data.entity.TransactionInfoTable
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TransactionInfoDao {
@@ -25,16 +26,25 @@ interface TransactionInfoDao {
     @Query("select comment from transaction_info where transaction_id=:transactionId")
     fun getComment(transactionId:String):LiveData<String>
 
+    @Query("select * from transaction_info where transaction_id=:transactionId")
+    fun getTransactionById(transactionId:Int):LiveData<TransactionInfoTable>
+
     @Query("update  transaction_info SET comment=:newComment  where transaction_id=:transactionId")
     fun updateComment(transactionId:String,newComment:String):Int
 
     @Query("SELECT * FROM transaction_info where status=0")
-    fun getTransactionEnCoursFromDb(): LiveData<List<TransactionInfoEntity>>
+    fun getTransactionEnCoursFromDb(): LiveData<List<TransactionInfoTable>>
+
+    @Query("SELECT * FROM transaction_info where status=0")
+    fun getTransactionEnCoursFromService(): Flow<List<TransactionInfoTable>>
 
     @Query("SELECT * FROM transaction_info where status=1")
-    fun getTransactionEffectueFromDb(): LiveData<List<TransactionInfoEntity>>
+    fun getTransactionEffectueFromDb(): LiveData<List<TransactionInfoTable>>
 
     @Query("SELECT * FROM transaction_info where status=2")
-    fun getTransactionEchoueFromDb(): LiveData<List<TransactionInfoEntity>>
+    fun getTransactionEchoueFromDb(): LiveData<List<TransactionInfoTable>>
+
+    @Query("SELECT * FROM transaction_info where status=2")
+    fun getTransactionEchoueFromService(): List<TransactionInfoTable>
 
 }

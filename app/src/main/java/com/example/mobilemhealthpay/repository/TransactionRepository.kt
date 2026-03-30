@@ -12,4 +12,6 @@ interface TransactionRepository {
 
     suspend fun registerTransaction(transactionInfoTable: TransactionInfoTable)
 
+    suspend fun getTransactionById(transactionId: Int): TransactionInfoTable
+
 }

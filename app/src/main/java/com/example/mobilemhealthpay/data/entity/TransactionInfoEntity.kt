@@ -14,5 +14,7 @@ data class TransactionInfoEntity (
     val operateur:String="",
     val comment:String?="",
     val date_creation:String="",
-    val status:Int=0
+    val status:Int=0,
+    val retryCount: Int= 0,
+    val lastAttemptAt: Long= 0L
 ):Parcelable

@@ -26,6 +26,7 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" android:required="true" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.ACTION_MANAGE_OVERLAY_PERMISSION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
 
 
@@ -51,6 +52,16 @@
             </intent-filter>
         </activity>
 
+        <receiver
+            android:name=".services.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+
         <service
             android:name=".services.USSDService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
@@ -62,5 +73,13 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+
+        <service
+            android:name=".services.TransactionPollingService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            />
+
     </application>
 </manifest>

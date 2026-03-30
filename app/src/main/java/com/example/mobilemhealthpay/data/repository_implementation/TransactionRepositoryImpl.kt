@@ -32,4 +32,8 @@ class TransactionRepositoryImpl @Inject constructor(private val PaiementApiServi
         appDataBase.transactionDao().insert(transactionInfoTable)
     }
 
+    override suspend fun getTransactionById(transactionId: Int): TransactionInfoTable {
+      return  appDataBase.transactionDao().getTransactionById(transactionId).value!!
+    }
+
 }

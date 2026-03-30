@@ -2,6 +2,7 @@ package com.example.mobilemhealthpay.domain.usecases
 
 import android.util.Log
 import com.example.mobilemhealthpay.Resource
+import com.example.mobilemhealthpay.data.entity.TransactionInfoEntity
 import com.example.mobilemhealthpay.data.entity.TransactionInfoTable
 import com.example.mobilemhealthpay.repository.TransactionRepository
 import kotlinx.coroutines.flow.catch
@@ -35,5 +36,9 @@ class TransactionUseCase @Inject constructor(private val transactionRepository: 
 
     suspend fun registerTransaction(transactionInfoTable: TransactionInfoTable){
         transactionRepository.registerTransaction(transactionInfoTable)
+    }
+
+   suspend fun getTransactionById(transactionId:Int): TransactionInfoTable{
+       return transactionRepository.getTransactionById(transactionId)
     }
 }

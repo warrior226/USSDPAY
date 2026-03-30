@@ -28,3 +28,22 @@ object Constant {
 
 
 }
+
+object FailureReason {
+    const val USSD_TIMEOUT        = "USSD_TIMEOUT"
+    const val USSD_REJECTED       = "USSD_REJECTED"
+    const val WRONG_RESPONSE      = "WRONG_RESPONSE"
+    const val NETWORK_ERROR       = "NETWORK_ERROR"
+    const val MAX_RETRIES_REACHED = "MAX_RETRIES_REACHED"
+    const val INSUFFICIENT_FUNDS  = "INSUFFICIENT_FUNDS"
+}
+
+object TransactionConfig {
+    const val MAX_RETRY_COUNT      = 3
+    const val MAX_AUTO_RETRY_COUNT = 3
+    const val BASE_RETRY_DELAY_MS  = 30_000L   // 30 seconds
+    const val USSD_TIMEOUT_MS      = 30_000L   // 30 seconds to wait for USSD dialog
+    const val BETWEEN_TX_DELAY_MS  = 2_000L    // 2 seconds between transactions
+    const val POLL_INTERVAL_MS     = 5 * 60 * 1000L  // 5 minutes
+    const val AUTO_RETRY_AFTER_MS  = 15 * 60 * 1000L // retry failed ones after 15 minutes
+}
