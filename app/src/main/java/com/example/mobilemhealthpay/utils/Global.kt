@@ -27,9 +27,13 @@ class Global {
         const val REQUEST_PERMISSION_CODE = 200
         const val Bearer="Bearer "
         const val number1 = "+22676600150"
+        const val secret_key="Q6rMfr7cRNhVaUY88xoEq7gIP_BgLC2iOgoTGcgdBe4"
         const val NUMBER_OF_REQUEST=5
         const val token ="eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL2xhZ2ZvLmNvbSIsImlhdCI6MTcwNzM5OTgzMywibW9kIjoiYWNjZXNzVG9rZW4iLCJ0eXAiOiJBUFBfUkVUUkFJVCIsImV4cCI6MTgwNzQwMDEzM30.sxG4ivauDjOclwRu3zhGovUMfNhGDjGY__VMutGVjJY"
-//        const val token = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYXBwU2VsbGVyQW5kcm9pZCIsImtleSI6IlczcHp6XmtWZXpAJCM5PzJVTXNebl9tM1FHNkQ0Vz05RyE0NW5BZHJ2X2RoNSNXYTdTTjclKkVxcz1nOFAtTE0ifQ.mgN2JdgRAcqc76445eK75iGcTkvOtiIAAuy9UZNRCa8"
+        /**
+         * Fallback password. 
+         * For production, use SecurityManager to save the real password securely.
+         */
         const val TRANSACTION_PASSWORD="2011"
         const val SIM_SLOT=0
         fun checkPermission(context: Context, permissions: ArrayList<String>): Boolean {

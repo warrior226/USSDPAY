@@ -9,7 +9,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.example.mobilemhealthpay.data.entity.TransactionInfoTable
 import com.example.mobilemhealthpay.utils.FailureReason
-import com.example.mobilemhealthpay.utils.Global
+import com.example.mobilemhealthpay.utils.SecurityManager
 import com.example.mobilemhealthpay.utils.SharedRepository
 import com.example.mobilemhealthpay.viewmodel.TransactionViewModel
 import dagger.hilt.android.AndroidEntryPoint
@@ -28,24 +28,27 @@ class USSDService : AccessibilityService() {
     @Inject
     lateinit var repository: SharedRepository
 
+    @Inject
+    lateinit var securityManager: SecurityManager
+
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     override fun onCreate() {
         super.onCreate()
-        Log.d("TAG", "onCreate: USSDService created")
+        Timber.d("onCreate: USSDService created")
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        Log.d("TAG", "onServiceConnected: Service is now connected and active!")
+        Timber.d("onServiceConnected: Service is now connected and active!")
     }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        Log.d("TAG", "onAccessibilityEvent: Event received!")
+        Timber.d("onAccessibilityEvent: Event received!")
 
         event?.let {
-            Log.d("TAG", "onAccessibilityEvent: EventType = ${it.eventType}")
-            Log.d("TAG", "onAccessibilityEvent: ClassName = ${it.className}")
-            Log.d("TAG", "onAccessibilityEvent: PackageName = ${it.packageName}")
-            Log.d("TAG", "onAccessibilityEvent: Text = ${it.text}")
+            Timber.d("onAccessibilityEvent: EventType = ${it.eventType}")
+            Timber.d("onAccessibilityEvent: ClassName = ${it.className}")
+            Timber.d("onAccessibilityEvent: PackageName = ${it.packageName}")
+            Timber.d("onAccessibilityEvent: Text = ${it.text}")
 
             //Mise à jour du status et validation de la transaction
 //            if(it.text.contains("")){
@@ -80,13 +83,13 @@ class USSDService : AccessibilityService() {
             if (it.className == "android.app.AlertDialog" ||
                 it.packageName == "com.android.phone") {
 
-                Log.d("TAG", "onAccessibilityEvent: USSD dialog detected!")
+                Timber.d("onAccessibilityEvent: USSD dialog detected!")
                 handleUSSDResponse(it)
             } else {
-                Log.d("TAG", "onAccessibilityEvent: Not a USSD dialog")
+                Timber.d("onAccessibilityEvent: Not a USSD dialog")
             }
         } ?: run {
-            Log.d("TAG", "onAccessibilityEvent: Event is null")
+            Timber.d("onAccessibilityEvent: Event is null")
         }
     }
     private fun handleUSSDResponse(event: AccessibilityEvent) {
@@ -94,7 +97,7 @@ class USSDService : AccessibilityService() {
 
         // Extract USSD text
         val ussdText = extractUSSDText(rootNode)
-        Log.d("TAG", "handleUSSDResponse: $ussdText ")
+        Timber.d("handleUSSDResponse: $ussdText ")
         // Determine next action based on USSD text
         val response = determineResponse(ussdText)
 
@@ -102,7 +105,7 @@ class USSDService : AccessibilityService() {
             // Send response with delay
             handler.postDelayed({
                 sendUSSDResponse(rootNode, response)
-            }, 500) // Adjust delay as needed
+            }, 5000) // Adjust delay as needed
         } else {
             // End of flow - dismiss dialog
             dismissDialog(rootNode)
@@ -192,6 +195,16 @@ class USSDService : AccessibilityService() {
     }
 
     private fun determineResponse(ussdText: String): String? {
+        // Parse balance if present
+        // Example: "Votre solde est de 5000 CFA"
+        if (ussdText.contains("solde", ignoreCase = true)) {
+            val regex = """(\d+)\s*CFA""".toRegex(RegexOption.IGNORE_CASE)
+            val match = regex.find(ussdText)
+            match?.let {
+                repository.updateBalance(it.value)
+            }
+        }
+
         // Implement your logic here based on the USSD menu
         // Return the option number/text to send, or null if done
         return when {
@@ -210,7 +223,7 @@ class USSDService : AccessibilityService() {
             ussdText.contains("1.National") -> "1"
             ussdText.contains("Saisir le numero beneficiaire") -> "1"
             ussdText.contains("Saisir le montant du transfert") -> "50"
-            ussdText.contains("") -> Global.TRANSACTION_PASSWORD
+            ussdText.contains("") -> securityManager.getTransactionPassword()
             else -> null // End flow
         }
     }

@@ -1,17 +1,16 @@
 package com.example.mobilemhealthpay.utils
 
-import com.example.mobilemhealthpay.data.Dao.TransactionInfoDao
-import com.example.mobilemhealthpay.data.entity.TransactionInfoEntity
 import com.example.mobilemhealthpay.data.entity.TransactionInfoTable
 import com.example.mobilemhealthpay.domain.usecases.TransactionUseCase
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.Collections
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -20,23 +19,23 @@ class SharedRepository @Inject constructor(
     private val transactionUseCase: TransactionUseCase
 ) {
 
-    private  val _transactionInfo= MutableStateFlow<TransactionInfoTable?>(null)
+    private val _transactionInfo = MutableStateFlow<TransactionInfoTable?>(null)
     val transactionInfo: StateFlow<TransactionInfoTable?> = _transactionInfo.asStateFlow()
-    val operationState=MutableStateFlow(true)
 
     // Flag to block new enqueuing when balance is insufficient
     private val _isFundsInsufficient = MutableStateFlow(false)
     val isFundsInsufficient: StateFlow<Boolean> = _isFundsInsufficient.asStateFlow()
 
-    // ----- Queue & Deferred -----
+    private val _currentBalance = MutableStateFlow<String?>(null)
+    val currentBalance: StateFlow<String?> = _currentBalance.asStateFlow()
 
-    // Unlimited channel holds all pending transactions in order
+    // ----- Queue & Processor State -----
+
     private var transactionQueue = Channel<TransactionInfoTable>(Channel.UNLIMITED)
-
-    // Suspension bridge: processor waits here until USSDService signals done
     private var currentDeferred: CompletableDeferred<UssdResult>? = null
-
-    // ----- Result Sealed Class -----
+    private val enqueuedIds = Collections.synchronizedSet(mutableSetOf<String>())
+    private val isProcessing = AtomicBoolean(false)
+    private val isPaused = AtomicBoolean(false)
 
     sealed class UssdResult {
         object Success : UssdResult()
@@ -44,25 +43,24 @@ class SharedRepository @Inject constructor(
         object InsufficientFunds : UssdResult()
     }
 
-    // Called by Fragment or PollingService to add transactions into the queue
+    // ----- Public API -----
+
     suspend fun enqueueTransactions(transactions: List<TransactionInfoTable>) {
         transactions.forEach { transaction ->
-            // Never enqueue if funds are insufficient
-            if (!_isFundsInsufficient.value) {
+            if (!_isFundsInsufficient.value && !enqueuedIds.contains(transaction.transactionId)) {
+                enqueuedIds.add(transaction.transactionId)
                 transactionQueue.send(transaction)
             }
         }
     }
 
-    // Called by USSDService after handling each USSD session
     fun signalOperationComplete(result: UssdResult) {
         currentDeferred?.complete(result)
     }
 
-    // Called by Fragment's "Relancer" button after user recharges
     suspend fun resumeAfterRecharge(pendingTransactions: List<TransactionInfoTable>) {
         _isFundsInsufficient.value = false
-        // Recreate the channel since the old one was cancelled
+        enqueuedIds.clear()
         transactionQueue = Channel(Channel.UNLIMITED)
         enqueueTransactions(pendingTransactions)
     }
@@ -71,112 +69,130 @@ class SharedRepository @Inject constructor(
         _isFundsInsufficient.value = true
     }
 
+    fun setPaused(paused: Boolean) {
+        isPaused.set(paused)
+    }
+
+    fun isPaused(): Boolean = isPaused.get()
+
     // ----- Core Sequential Processor -----
 
     suspend fun startProcessing(
-        onLaunchUssd: (String, Int) -> Unit,
-        onValidate: (String, String, Int,String) -> Unit,
-        onTransactionFailed: (TransactionInfoTable) -> Unit,
-        onInsufficientFunds: (TransactionInfoTable) -> Unit
+        launchUssd: (String, Int) -> Unit
     ) {
-        for (transaction in transactionQueue) {
+        if (!isProcessing.compareAndSet(false, true)) return
 
-            // 1. Expose current transaction so USSDService can read numero & montant
-            _transactionInfo.value = transaction
+        try {
+            for (transaction in transactionQueue) {
+                // Check pause state
+                while (isPaused.get()) {
+                    delay(1000)
+                }
 
-            // 2. Fire USSD intent via Fragment
-            onLaunchUssd(transaction.numero, transaction.montant)
+                _transactionInfo.value = transaction
+                launchUssd(transaction.numero, transaction.montant)
 
-            // 3. Suspend — wait for USSDService to signal, with a timeout
-            currentDeferred = CompletableDeferred()
-            val result = withTimeoutOrNull(TransactionConfig.USSD_TIMEOUT_MS) {
-                currentDeferred!!.await()
+                currentDeferred = CompletableDeferred()
+                val result = withTimeoutOrNull(TransactionConfig.USSD_TIMEOUT_MS) {
+                    currentDeferred!!.await()
+                }
+
+                when (result) {
+                    null -> {
+                        handleFailure(transaction, FailureReason.USSD_TIMEOUT)
+                    }
+                    is UssdResult.InsufficientFunds -> {
+                        handleFailure(transaction, FailureReason.INSUFFICIENT_FUNDS)
+                        signalInsufficientFunds()
+                        transactionQueue.cancel()
+                        transactionQueue = Channel(Channel.UNLIMITED)
+                        return // Stop processing
+                    }
+                    is UssdResult.Failure -> {
+                        handleFailure(transaction, result.reason)
+                    }
+                    is UssdResult.Success -> {
+                        enqueuedIds.remove(transaction.transactionId)
+                        // Success -> mark as 1 in DB
+                        val updated = transaction.copy(status = 1, comment = "Success")
+                        registerTransaction(updated)
+                        // validate(updated, "Success") // Commenté à la demande de l'utilisateur
+                    }
+                }
+                delay(TransactionConfig.BETWEEN_TX_DELAY_MS)
             }
-
-            // 4. Handle result
-            when {
-                result == null -> {
-                    // Timeout — no USSD dialog appeared
-                    handleFailure(transaction, FailureReason.USSD_TIMEOUT, onTransactionFailed)
-                }
-
-                result is UssdResult.InsufficientFunds -> {
-                    // Mark current transaction as failed
-                    handleFailure(transaction, FailureReason.INSUFFICIENT_FUNDS, onTransactionFailed)
-                    // Block future enqueuing
-                    signalInsufficientFunds()
-                    // Cancel the queue — remaining transactions stay as status=0 in DB
-                    transactionQueue.cancel()
-                    // Notify Fragment to show alert
-                    onInsufficientFunds(transaction)
-                    return  // Exit processor entirely
-                }
-
-                result is UssdResult.Failure -> {
-                    handleFailure(transaction, result.reason, onTransactionFailed)
-                }
-
-                result is UssdResult.Success -> {
-                    // Confirm transaction on backend
-                    onValidate(transaction.transactionId,transaction.comment ?: "",transaction.montant,transaction.operateur)
-                }
-            }
-
-            // 5. Brief pause before next transaction
-            delay(TransactionConfig.BETWEEN_TX_DELAY_MS)
+        } finally {
+            isProcessing.set(false)
         }
     }
 
-    // ----- Failure Handler -----
+    // ----- Private Helpers -----
 
     private suspend fun handleFailure(
         transaction: TransactionInfoTable,
-        reason: String,
-        onTransactionFailed: (TransactionInfoTable) -> Unit
+        reason: String
     ) {
         val newRetryCount = transaction.retryCount + 1
-        val permanentlyFailed = newRetryCount > TransactionConfig.MAX_RETRY_COUNT
+        // User requirements: 3rd fail (retryCount=3) -> mark as failed
+        val permanentlyFailed = newRetryCount >= TransactionConfig.MAX_RETRY_COUNT
 
         val updatedTransaction = transaction.copy(
             status        = if (permanentlyFailed) 2 else 0,
             retryCount    = newRetryCount,
             lastAttemptAt = System.currentTimeMillis(),
-            comment       = reason  // comment holds the failure reason
+            comment       = reason
         )
 
+        registerTransaction(updatedTransaction)
+
         if (permanentlyFailed) {
-            // Mark as permanently failed → moves to "Echouées" tab
-            registerTransaction(updatedTransaction)
-            onTransactionFailed(updatedTransaction)
+            enqueuedIds.remove(transaction.transactionId)
+            // validate(updatedTransaction, reason) // Commenté à la demande de l'utilisateur
         } else {
-            // Exponential backoff then re-enqueue
+            // User requirements: 1st fail (30s), 2nd fail (60s)
             val backoffDelay = TransactionConfig.BASE_RETRY_DELAY_MS * newRetryCount
             delay(backoffDelay)
-            registerTransaction(updatedTransaction)
+            // Re-enqueue for next attempt
             transactionQueue.send(updatedTransaction)
         }
     }
 
-
-
-
-//    fun updateTransactionInfo(transactionInfoEntity: TransactionInfoEntity){
-//        _transactionInfo.value=transactionInfoEntity
-//    }
-
-    // ----- DB Delegate -----
-
-    suspend fun registerTransaction(transactionInfoTable: TransactionInfoTable) {
-        transactionUseCase.registerTransaction(transactionInfoTable)
+    /* 
+    // Méthode de validation API (Commentée à la demande de l'utilisateur)
+    private suspend fun validate(transaction: TransactionInfoTable, message: String) {
+        try {
+            val hash = encryptWithHmacSha256(
+                "${transaction.montant}${transaction.operateur}##${transaction.transactionId}",
+                "--${transaction.transactionId}--"
+            )
+            transactionUseCase.validateTransaction(
+                transaction.transactionId,
+                message,
+                hash,
+                Global.token
+            ).collect { }
+        } catch (e: Exception) {
+            // Timber.e(e, "Validation failed")
+        }
     }
 
+    private fun encryptWithHmacSha256(data: String, secret: String): String {
+        val secretKeySpec = javax.crypto.spec.SecretKeySpec(secret.toByteArray(), "HmacSHA256")
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(secretKeySpec)
+        return java.util.Base64.getEncoder().encodeToString(mac.doFinal(data.toByteArray()))
+    }
+    */
 
-    fun clearTransactionInfo(){
-        _transactionInfo.value=null
+    suspend fun registerTransaction(transaction: TransactionInfoTable) {
+        transactionUseCase.registerTransaction(transaction)
     }
 
-    fun updateOperationState(state:Boolean){
-        operationState.value=state
+    fun updateBalance(balance: String) {
+        _currentBalance.value = balance
     }
 
+    fun clearTransactionInfo() {
+        _transactionInfo.value = null
+    }
 }

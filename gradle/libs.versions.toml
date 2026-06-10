@@ -29,6 +29,7 @@ retrofit = "2.11.0"
 okhttp = "5.0.0-alpha.14"
 eventbus = "3.3.1"
 ussd="1.4.a"
+securityCrypto = "1.1.0-alpha06"
 
 
 
@@ -70,6 +71,7 @@ eventbus = { module = "org.greenrobot:eventbus", version.ref = "eventbus" }
 gson-converter={group="com.squareup.retrofit2", name="converter-gson", version.ref="retrofit"}
 scalars = { module = "com.squareup.retrofit2:converter-scalars", version.ref = "retrofit" }
 ussd-library={module="com.github.romellfudi.VoIpUSSD:kotlin-ussd-library",version.ref="ussd"}
+androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 
 
 

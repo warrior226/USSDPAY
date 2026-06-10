@@ -1,14 +1,16 @@
 package com.example.mobilemhealthpay.services
 
+import android.Manifest
 import android.app.Service
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.IBinder
-import android.util.Log
+import timber.log.Timber
+import androidx.core.content.ContextCompat
 import com.example.mobilemhealthpay.Resource
-import com.example.mobilemhealthpay.data.AppDataBase
 import com.example.mobilemhealthpay.data.Dao.TransactionInfoDao
 import com.example.mobilemhealthpay.data.entity.TransactionInfoTable
-import com.example.mobilemhealthpay.data.entity.TransactionResponseEntity
 import com.example.mobilemhealthpay.domain.usecases.TransactionUseCase
 import com.example.mobilemhealthpay.utils.Global
 import com.example.mobilemhealthpay.utils.SharedRepository
@@ -32,13 +34,23 @@ class TransactionPollingService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // 1. Start sequential processing job
+        serviceScope.launch {
+            repository.startProcessing { numero, montant ->
+                launchUssdCodeBackground(numero, montant)
+            }
+        }
+
+        // 2. Start periodic fetch job (every 5 minutes)
         serviceScope.launch {
             while (true) {
                 fetchAndEnqueueNewTransactions()
+                // Periodic maintenance: retry long-failed ones if configured
                 retryFailedTransactions()
                 delay(TransactionConfig.POLL_INTERVAL_MS)
             }
         }
+        
         return START_STICKY
     }
 
@@ -47,42 +59,32 @@ class TransactionPollingService : Service() {
             transactionUseCase
                 .getTransactionInformation(Global.NUMBER_OF_REQUEST, Global.token)
                 .collect { resource ->
-                    when (resource) {
-                        is Resource.Progress    -> { /* ignore */ }
-                        is Resource.HandleToken -> { /* ignore */ }
-
-                        is Resource.Success -> {
-                            resource.data.data.forEach { transactionInfo ->
-                                val table = TransactionInfoTable(
-                                    transactionId = transactionInfo.transaction_id,
-                                    user_id       = transactionInfo.user_id,
-                                    montant       = transactionInfo.montant,
-                                    numero        = transactionInfo.numero,
-                                    operateur     = transactionInfo.operateur,
-                                    comment       = transactionInfo.comment,
-                                    date_creation = transactionInfo.date_creation,
-                                    status        = 0
-                                )
-                                repository.registerTransaction(table)
-                                if (!repository.isFundsInsufficient.value) {
-                                    repository.enqueueTransactions(listOf(table))
-                                }
+                    if (resource is Resource.Success) {
+                        resource.data.data.forEach { tx ->
+                            val table = TransactionInfoTable(
+                                transactionId = tx.transaction_id,
+                                user_id       = tx.user_id,
+                                montant       = tx.montant,
+                                numero        = tx.numero,
+                                operateur     = tx.operateur,
+                                comment       = tx.comment,
+                                date_creation = tx.date_creation,
+                                status        = 0
+                            )
+                            repository.registerTransaction(table)
+                            if (!repository.isFundsInsufficient.value) {
+                                repository.enqueueTransactions(listOf(table))
                             }
-                        }
-
-                        is Resource.Failure -> {
-                            Log.e("TAG", "Fetch failed: ${resource.throwable.message}")
                         }
                     }
                 }
         } catch (e: Exception) {
-            Log.e("TAG", "Polling error: ${e.message}")
+            Timber.e(e, "Fetch error")
         }
     }
 
     private suspend fun retryFailedTransactions() {
         try {
-            // One-shot query — returns immediately, no collect needed
             val failedTransactions = transactionDao.getTransactionEchoueFromService()
             val now = System.currentTimeMillis()
 
@@ -101,12 +103,25 @@ class TransactionPollingService : Service() {
                     if (!repository.isFundsInsufficient.value) {
                         repository.enqueueTransactions(listOf(resetTransaction))
                     }
-                } else if (!canRetry) {
-                    Log.e("TAG", "Permanently failed: ${transaction.transactionId}")
                 }
             }
         } catch (e: Exception) {
-            Log.e("TAG", "Retry error: ${e.message}")
+            Timber.e(e, "Retry error")
+        }
+    }
+
+    private fun launchUssdCodeBackground(numero: String, montant: Int) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE)
+            != PackageManager.PERMISSION_GRANTED) return
+
+        try {
+            val ussdCode = "*144*2*$numero*$montant#"
+            val encodedUssd = ussdCode.replace("#", Uri.encode("#"))
+            val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$encodedUssd"))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+        } catch (e: Exception) {
+            Timber.e(e, "USSD Error")
         }
     }
 

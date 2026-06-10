@@ -47,4 +47,6 @@ interface TransactionInfoDao {
     @Query("SELECT * FROM transaction_info where status=2")
     fun getTransactionEchoueFromService(): List<TransactionInfoTable>
 
+    @Query("UPDATE transaction_info SET numero = :newNumero WHERE transaction_id = :transactionId")
+    suspend fun updateTransactionNumber(transactionId: String, newNumero: String)
 }

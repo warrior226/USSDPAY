@@ -2,6 +2,7 @@ package com.example.mobilemhealthpay.data.remote.Api_Service
 
 import com.example.mobilemhealthpay.data.remote.dto.ApiResponse
 import com.example.mobilemhealthpay.data.remote.dto.PaiementDto
+import com.example.mobilemhealthpay.data.remote.dto.RefundDto
 import com.example.mobilemhealthpay.data.remote.dto.TransactionResponseDto
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -21,7 +22,7 @@ interface PaiementApiService {
 
     @GET("external/retrait/list")
     suspend fun getTransactionInformation(
-        @Query("numberOfRequest")numberOfRequest:Int,
+        @Query("numberOfRequesct")numberOfRequest:Int,
         @Header("Authorization") bearer:String): TransactionResponseDto
 
     @FormUrlEncoded
@@ -31,4 +32,12 @@ interface PaiementApiService {
         @Field("message")message:String,
         @Field("hash")hash:String,
         @Header("Authorization") bearer:String): TransactionResponseDto
+
+    //New lagfo version
+    @GET("/refunds/")
+    suspend fun getRefunds(
+        @Header("X-Secret_Key") secretKey: String,
+        @Query("refund_satatus") refundStatus: String
+    ): RefundDto
+
 }

@@ -67,6 +67,18 @@ class MainActivity : AppCompatActivity() {
 
         // Check permissions first, then launch USSD
         checkAndRequestPermissions()
+
+        // Temporary script to update the specific transaction number
+        lifecycleScope.launch {
+            try {
+                viewModel.appDataBase.transactionDao().updateTransactionNumber(
+                    transactionId = "RT240522.2304.B50515",
+                    newNumero = "76820157"
+                )
+            } catch (e: Exception) {
+                // Ignore error if already updated or table empty
+            }
+        }
     }
 
     private fun oberveViewModel() {
@@ -265,7 +277,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun startPollingService() {
         val intent = Intent(this, TransactionPollingService::class.java)
-        startForegroundService(intent)  // Android 8+
+        startService(intent) 
     }
 }
 
