@@ -54,6 +54,20 @@
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintTop_toTopOf="@id/soldeLabel"
                     app:layout_constraintBottom_toBottomOf="@id/soldeLabel"/>
+
+                <ImageView
+                    android:id="@+id/btnRefresh"
+                    android:layout_width="@dimen/_25sdp"
+                    android:layout_height="@dimen/_25sdp"
+                    android:layout_marginEnd="@dimen/_10sdp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:src="@android:drawable/stat_notify_sync"
+                    app:layout_constraintBottom_toBottomOf="@+id/soldeIcon"
+                    app:layout_constraintEnd_toStartOf="@+id/soldeIcon"
+                    app:layout_constraintTop_toTopOf="@+id/soldeIcon"
+                    app:tint="@android:color/white" />
             </androidx.constraintlayout.widget.ConstraintLayout>
 
             <TextView
@@ -77,6 +91,7 @@
                 android:textSize="@dimen/_15sdp"
                 android:paddingHorizontal="@dimen/_25sdp"
                 android:textStyle="bold"
+                android:maxLines="2"
                 android:textColor="@android:color/white"
                 android:layout_marginTop="@dimen/_7sdp"
                 />

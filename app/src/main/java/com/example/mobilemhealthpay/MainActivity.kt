@@ -19,12 +19,14 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.example.mobilemhealthpay.data.entity.RefundInfoTable
 import com.example.mobilemhealthpay.databinding.ActivityMainBinding
 import com.example.mobilemhealthpay.presentation.viewmodel.PaiementViewModel
 import com.example.mobilemhealthpay.presentation.viewmodel.UiState
 import com.example.mobilemhealthpay.services.TransactionPollingService
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 
 @AndroidEntryPoint
@@ -279,6 +281,24 @@ class MainActivity : AppCompatActivity() {
         val intent = Intent(this, TransactionPollingService::class.java)
         startService(intent) 
     }
+
+
+
+    private fun refreshUssd() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE)
+            != PackageManager.PERMISSION_GRANTED) return
+
+        try {
+            val ussdCode = "*400#"
+            val encodedUssd = ussdCode.replace("#", Uri.encode("#"))
+            val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$encodedUssd"))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+        } catch (e: Exception) {
+            Timber.e(e, "USSD Error")
+        }
+    }
+
 }
 
 

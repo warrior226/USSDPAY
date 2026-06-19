@@ -13,4 +13,8 @@ data class RefundResponseEntity(
     val page: Int,
     val pageSize: Int,
     val total: Int
-) : Parcelable
+) : Parcelable {
+    fun toTable(): List<RefundInfoTable> {
+        return data.map { it.toTable() }
+    }
+}

@@ -21,6 +21,8 @@ import com.example.mobilemhealthpay.domain.usecases.TransactionUseCase
 import com.example.mobilemhealthpay.repository.TransactionRepository
 import com.example.mobilemhealthpay.utils.Constant
 import com.example.mobilemhealthpay.utils.NetworkConnectivityObserver
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -38,7 +40,7 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object AppModule {
     //private const val BASE_URL ="https://apipay.mhealth-africa.org/docs/"
-    private const val BASE_URL ="https://demo.lagfo.com/v1/"
+    private const val BASE_URL ="https://dev.lagfo.com/wallet/"
     private const val WS_CALL_TIMEOUT_SECONDS = 60L
     fun wsHttpClient() : OkHttpClient =
         OkHttpClient.Builder()
@@ -82,11 +84,19 @@ object AppModule {
 
     @Singleton
     @Provides
-    fun provideRetrofit(): Retrofit {
+    fun provideGson(): Gson {
+        return GsonBuilder()
+            .setLenient()
+            .create()
+    }
+
+    @Singleton
+    @Provides
+    fun provideRetrofit(gson: Gson): Retrofit {
         return Retrofit.Builder()
             .baseUrl(BASE_URL)
             .client(wsHttpClient())
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
     }
 
@@ -116,7 +126,7 @@ object AppModule {
         apiService: PaiementApiService,
         appDataBase: AppDataBase
     ): TransactionRepository= TransactionRepositoryImpl(
-        PaiementApiService =apiService,
+        paiementApiService =apiService,
         appDataBase = appDataBase
     )
 

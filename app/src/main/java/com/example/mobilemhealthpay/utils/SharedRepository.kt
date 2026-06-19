@@ -1,7 +1,12 @@
 package com.example.mobilemhealthpay.utils
 
-import com.example.mobilemhealthpay.data.entity.TransactionInfoTable
+import com.example.mobilemhealthpay.Resource
+import com.example.mobilemhealthpay.data.entity.RefundInfoTable
+import com.example.mobilemhealthpay.data.remote.dto.ApiResponse
+import com.example.mobilemhealthpay.data.remote.dto.RefundCompleteDto
+import com.example.mobilemhealthpay.data.remote.dto.VirementDto
 import com.example.mobilemhealthpay.domain.usecases.TransactionUseCase
+import timber.log.Timber
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -19,8 +24,8 @@ class SharedRepository @Inject constructor(
     private val transactionUseCase: TransactionUseCase
 ) {
 
-    private val _transactionInfo = MutableStateFlow<TransactionInfoTable?>(null)
-    val transactionInfo: StateFlow<TransactionInfoTable?> = _transactionInfo.asStateFlow()
+    private val _refundInfo = MutableStateFlow<RefundInfoTable?>(null)
+    val refundInfo: StateFlow<RefundInfoTable?> = _refundInfo.asStateFlow()
 
     // Flag to block new enqueuing when balance is insufficient
     private val _isFundsInsufficient = MutableStateFlow(false)
@@ -31,9 +36,11 @@ class SharedRepository @Inject constructor(
 
     // ----- Queue & Processor State -----
 
-    private var transactionQueue = Channel<TransactionInfoTable>(Channel.UNLIMITED)
+    private var refundQueue = Channel<RefundInfoTable>(Channel.UNLIMITED)
     private var currentDeferred: CompletableDeferred<UssdResult>? = null
     private val enqueuedIds = Collections.synchronizedSet(mutableSetOf<String>())
+    private val _isQueueEmpty = MutableStateFlow(true)
+    val isQueueEmpty: StateFlow<Boolean> = _isQueueEmpty.asStateFlow()
     private val isProcessing = AtomicBoolean(false)
     private val isPaused = AtomicBoolean(false)
 
@@ -45,11 +52,12 @@ class SharedRepository @Inject constructor(
 
     // ----- Public API -----
 
-    suspend fun enqueueTransactions(transactions: List<TransactionInfoTable>) {
-        transactions.forEach { transaction ->
-            if (!_isFundsInsufficient.value && !enqueuedIds.contains(transaction.transactionId)) {
-                enqueuedIds.add(transaction.transactionId)
-                transactionQueue.send(transaction)
+    suspend fun enqueueRefunds(refunds: List<RefundInfoTable>) {
+        refunds.forEach { refund ->
+            if (!_isFundsInsufficient.value && !enqueuedIds.contains(refund.refundId)) {
+                enqueuedIds.add(refund.refundId)
+                _isQueueEmpty.value = false
+                refundQueue.send(refund)
             }
         }
     }
@@ -58,11 +66,12 @@ class SharedRepository @Inject constructor(
         currentDeferred?.complete(result)
     }
 
-    suspend fun resumeAfterRecharge(pendingTransactions: List<TransactionInfoTable>) {
+    suspend fun resumeAfterRecharge(pendingRefunds: List<RefundInfoTable>) {
         _isFundsInsufficient.value = false
         enqueuedIds.clear()
-        transactionQueue = Channel(Channel.UNLIMITED)
-        enqueueTransactions(pendingTransactions)
+        _isQueueEmpty.value = true
+        refundQueue = Channel(Channel.UNLIMITED)
+        enqueueRefunds(pendingRefunds)
     }
 
     fun signalInsufficientFunds() {
@@ -78,19 +87,19 @@ class SharedRepository @Inject constructor(
     // ----- Core Sequential Processor -----
 
     suspend fun startProcessing(
-        launchUssd: (String, Int) -> Unit
+        launchUssd: (RefundInfoTable) -> Unit
     ) {
         if (!isProcessing.compareAndSet(false, true)) return
 
         try {
-            for (transaction in transactionQueue) {
+            for (refund in refundQueue) {
                 // Check pause state
                 while (isPaused.get()) {
                     delay(1000)
                 }
 
-                _transactionInfo.value = transaction
-                launchUssd(transaction.numero, transaction.montant)
+                _refundInfo.value = refund
+                launchUssd(refund)
 
                 currentDeferred = CompletableDeferred()
                 val result = withTimeoutOrNull(TransactionConfig.USSD_TIMEOUT_MS) {
@@ -99,24 +108,26 @@ class SharedRepository @Inject constructor(
 
                 when (result) {
                     null -> {
-                        handleFailure(transaction, FailureReason.USSD_TIMEOUT)
+                        handleFailure(refund, FailureReason.USSD_TIMEOUT)
                     }
                     is UssdResult.InsufficientFunds -> {
-                        handleFailure(transaction, FailureReason.INSUFFICIENT_FUNDS)
+                        handleFailure(refund, FailureReason.INSUFFICIENT_FUNDS)
                         signalInsufficientFunds()
-                        transactionQueue.cancel()
-                        transactionQueue = Channel(Channel.UNLIMITED)
+                        refundQueue.cancel()
+                        refundQueue = Channel(Channel.UNLIMITED)
                         return // Stop processing
                     }
                     is UssdResult.Failure -> {
-                        handleFailure(transaction, result.reason)
+                        handleFailure(refund, result.reason)
                     }
                     is UssdResult.Success -> {
-                        enqueuedIds.remove(transaction.transactionId)
+                        enqueuedIds.remove(refund.refundId)
+                        _isQueueEmpty.value = enqueuedIds.isEmpty()
                         // Success -> mark as 1 in DB
-                        val updated = transaction.copy(status = 1, comment = "Success")
-                        registerTransaction(updated)
-                        // validate(updated, "Success") // Commenté à la demande de l'utilisateur
+                        val updated = refund.copy(status = 1)
+                        registerRefund(updated)
+                        // Call report API
+                        reportTransactionStatus(updated, "success", "Opération réussie")
                     }
                 }
                 delay(TransactionConfig.BETWEEN_TX_DELAY_MS)
@@ -128,71 +139,86 @@ class SharedRepository @Inject constructor(
 
     // ----- Private Helpers -----
 
+    private suspend fun reportTransactionStatus(refund: RefundInfoTable, status: String, reason: String) {
+        try {
+            val reportFlow = if (refund.isRefund == 1) {
+                if (status == "success") {
+                    transactionUseCase.completeRefund(Global.secret_key, refund.refundId, reason)
+                } else {
+                    transactionUseCase.failRefund(Global.secret_key, refund.refundId, reason)
+                }
+            } else {
+                transactionUseCase.reportTransactionAttempt(Global.secret_key, refund.refundId, status)
+            }
+
+            reportFlow.collect { resource ->
+                if (resource is Resource.Success) {
+                    val data = resource.data
+                    if (data is ApiResponse<*>) {
+                        if (data.status == 1) {
+                            val responseData = data.data
+                            val existingTransaction = transactionUseCase.getRefundById(refund.refundId)
+                            existingTransaction?.let { it ->
+                                val updated = when (responseData) {
+                                    is VirementDto -> it.copy(
+                                        refundStatus = responseData.status,
+                                        providerTransactionId = responseData.paymentRef ?: it.providerTransactionId,
+                                        lastAttemptAt = System.currentTimeMillis()
+                                    )
+                                    is RefundCompleteDto -> it.copy(
+                                        refundStatus = responseData.refundStatus,
+                                        lastAttemptAt = System.currentTimeMillis()
+                                    )
+                                    else -> it
+                                }
+                                registerRefund(updated)
+                            }
+                            Timber.d("reportTransactionStatus success: ${refund.refundId} -> $status")
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to report transaction status on server")
+        }
+    }
+
     private suspend fun handleFailure(
-        transaction: TransactionInfoTable,
+        refund: RefundInfoTable,
         reason: String
     ) {
-        val newRetryCount = transaction.retryCount + 1
-        // User requirements: 3rd fail (retryCount=3) -> mark as failed
-        val permanentlyFailed = newRetryCount >= TransactionConfig.MAX_RETRY_COUNT
+        val newAttemptCount = refund.attemptCount + 1
+        val permanentlyFailed = newAttemptCount >= 3 // Maximum 3 attempts
 
-        val updatedTransaction = transaction.copy(
+        val updatedRefund = refund.copy(
             status        = if (permanentlyFailed) 2 else 0,
-            retryCount    = newRetryCount,
-            lastAttemptAt = System.currentTimeMillis(),
-            comment       = reason
+            attemptCount  = newAttemptCount,
+            lastAttemptAt = System.currentTimeMillis()
         )
 
-        registerTransaction(updatedTransaction)
+        registerRefund(updatedRefund)
 
         if (permanentlyFailed) {
-            enqueuedIds.remove(transaction.transactionId)
-            // validate(updatedTransaction, reason) // Commenté à la demande de l'utilisateur
+            enqueuedIds.remove(refund.refundId)
+            _isQueueEmpty.value = enqueuedIds.isEmpty()
+            // Call report API on server when permanently failed after 3 attempts
+            reportTransactionStatus(updatedRefund, "failed", reason)
         } else {
-            // User requirements: 1st fail (30s), 2nd fail (60s)
-            val backoffDelay = TransactionConfig.BASE_RETRY_DELAY_MS * newRetryCount
-            delay(backoffDelay)
-            // Re-enqueue for next attempt
-            transactionQueue.send(updatedTransaction)
+            // Wait 10 seconds before trying again
+            delay(10000)
+            refundQueue.send(updatedRefund)
         }
     }
 
-    /* 
-    // Méthode de validation API (Commentée à la demande de l'utilisateur)
-    private suspend fun validate(transaction: TransactionInfoTable, message: String) {
-        try {
-            val hash = encryptWithHmacSha256(
-                "${transaction.montant}${transaction.operateur}##${transaction.transactionId}",
-                "--${transaction.transactionId}--"
-            )
-            transactionUseCase.validateTransaction(
-                transaction.transactionId,
-                message,
-                hash,
-                Global.token
-            ).collect { }
-        } catch (e: Exception) {
-            // Timber.e(e, "Validation failed")
-        }
-    }
-
-    private fun encryptWithHmacSha256(data: String, secret: String): String {
-        val secretKeySpec = javax.crypto.spec.SecretKeySpec(secret.toByteArray(), "HmacSHA256")
-        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
-        mac.init(secretKeySpec)
-        return java.util.Base64.getEncoder().encodeToString(mac.doFinal(data.toByteArray()))
-    }
-    */
-
-    suspend fun registerTransaction(transaction: TransactionInfoTable) {
-        transactionUseCase.registerTransaction(transaction)
+    suspend fun registerRefund(refund: RefundInfoTable) {
+        transactionUseCase.registerRefund(refund)
     }
 
     fun updateBalance(balance: String) {
         _currentBalance.value = balance
     }
 
-    fun clearTransactionInfo() {
-        _transactionInfo.value = null
+    fun clearRefundInfo() {
+        _refundInfo.value = null
     }
 }

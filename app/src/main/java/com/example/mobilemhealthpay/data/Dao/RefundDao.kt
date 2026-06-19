@@ -19,14 +19,14 @@ interface RefundDao {
     @Update
     suspend fun update(refund: RefundInfoTable)
 
-    @Query("SELECT * FROM refund_info WHERE status = 0")
-    fun getPendingRefunds(): LiveData<List<RefundInfoTable>>
+    @Query("SELECT * FROM refund_info WHERE status = 0 AND is_refund = :isRefund")
+    fun getPendingRefunds(isRefund: Int): LiveData<List<RefundInfoTable>>
 
-    @Query("SELECT * FROM refund_info WHERE status = 1")
-    fun getSuccessfulRefunds(): LiveData<List<RefundInfoTable>>
+    @Query("SELECT * FROM refund_info WHERE status = 1 AND is_refund = :isRefund")
+    fun getSuccessfulRefunds(isRefund: Int): LiveData<List<RefundInfoTable>>
 
-    @Query("SELECT * FROM refund_info WHERE status = 2")
-    fun getFailedRefunds(): LiveData<List<RefundInfoTable>>
+    @Query("SELECT * FROM refund_info WHERE status = 2 AND is_refund = :isRefund")
+    fun getFailedRefunds(isRefund: Int): LiveData<List<RefundInfoTable>>
 
     @Query("SELECT * FROM refund_info WHERE refund_id = :refundId")
     suspend fun getRefundById(refundId: String): RefundInfoTable?

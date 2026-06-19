@@ -17,8 +17,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.mobilemhealthpay.Resource
 import com.example.mobilemhealthpay.data.AppDataBase
-import com.example.mobilemhealthpay.data.entity.TransactionInfoTable
-import com.example.mobilemhealthpay.data.entity.TransactionResponseEntity
+import com.example.mobilemhealthpay.data.entity.RefundInfoTable
+import com.example.mobilemhealthpay.data.entity.RefundResponseEntity
 import com.example.mobilemhealthpay.databinding.FragmentPaiementEncoursBinding
 import com.example.mobilemhealthpay.presentation.adapters.PaiementEncoursAdapter
 import com.example.mobilemhealthpay.presentation.adapters.TransactionInfoItem
@@ -37,6 +37,23 @@ class PaiementEnCoursFragment : Fragment() {
     
     private lateinit var binding: FragmentPaiementEncoursBinding
     private val viewModel: TransactionViewModel by viewModels()
+    private var type: String = "REFUND"
+    val listOM=listOf('4','5','6','7')
+
+    companion object {
+        fun newInstance(type: String): PaiementEnCoursFragment {
+            val fragment = PaiementEnCoursFragment()
+            val args = Bundle()
+            args.putString("TYPE", type)
+            fragment.arguments = args
+            return fragment
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        type = arguments?.getString("TYPE") ?: "REFUND"
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -59,9 +76,13 @@ class PaiementEnCoursFragment : Fragment() {
 
     private fun setupListeners() {
         binding.button.setOnClickListener {
-            Toast.makeText(requireContext(), "Chargement des transactions...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "Chargement des données...", Toast.LENGTH_SHORT).show()
             showLoader(true)
-            viewModel.getTransaction(Global.NUMBER_OF_REQUEST, Global.token)
+            if (type == "REFUND") {
+                viewModel.getRefunds(Global.secret_key, Global.TO_REFUND, Global.PAGE_SIZE)
+            } else {
+                viewModel.getVirements(Global.secret_key, "pending", Global.PAGE_SIZE)
+            }
         }
 
         binding.btnStart.setOnClickListener {
@@ -88,19 +109,9 @@ class PaiementEnCoursFragment : Fragment() {
         viewModel.getTransactionResult.observe(viewLifecycleOwner) { result ->
             if (result is Resource.Success<*>) {
                 val data = result.data
-                if (data is TransactionResponseEntity && data.status == 1) {
-                    data.data.forEach { tx ->
-                        val table = TransactionInfoTable(
-                            user_id       = tx.user_id,
-                            montant       = tx.montant,
-                            transactionId = tx.transaction_id,
-                            numero        = tx.numero,
-                            operateur     = tx.operateur,
-                            comment       = tx.comment,
-                            date_creation = tx.date_creation,
-                            status        = 0
-                        )
-                        viewModel.registerTransaction(table)
+                if (data is RefundResponseEntity && data.status == 1) {
+                    data.data.forEach { rf ->
+                        viewModel.registerRefund(rf.toTable())
                     }
                 }
                 showLoader(false)
@@ -111,54 +122,63 @@ class PaiementEnCoursFragment : Fragment() {
         }
 
         // 2. Observe Database for rendering and processing
-        appDataBase.transactionDao()
-            .getTransactionEnCoursFromDb()
+        appDataBase.refundDao()
+            .getPendingRefunds(if (type == "REFUND") 1 else 0)
             .observe(viewLifecycleOwner) { pendingList ->
-                if (pendingList.isNullOrEmpty()) {
-                    binding.info.visibility = View.VISIBLE
-                    binding.scrollView.visibility = View.INVISIBLE
-                    binding.button.visibility = View.VISIBLE
-                    binding.processControls.visibility = View.GONE
-                } else {
-                    binding.info.visibility = View.INVISIBLE
-                    binding.scrollView.visibility = View.VISIBLE
-                    binding.button.visibility = View.GONE
-                    binding.processControls.visibility = View.VISIBLE
+                val isEmpty = pendingList.isNullOrEmpty()
+                
+                binding.info.visibility = if (isEmpty) View.VISIBLE else View.GONE
+                binding.scrollView.visibility = if (isEmpty) View.INVISIBLE else View.VISIBLE
+                
+                // Show start/stop buttons only if list is not empty
+                binding.processControls.visibility = if (isEmpty) View.GONE else View.VISIBLE
+                
+                // Keep the fetch button always visible
+                binding.button.visibility = View.VISIBLE
+                
+                if (!isEmpty) {
+                    updateUi(pendingList!!)
                     
-                    updateUi(pendingList)
+                    // As soon as there are transactions, ensure we are not paused and proceed
+                    if (repository.isPaused()) {
+                        repository.setPaused(false)
+                        updateControlButtons()
+                    }
                     
                     // Start sequential processing
                     viewLifecycleOwner.lifecycleScope.launch {
-                        repository.enqueueTransactions(pendingList)
-                        repository.startProcessing { numero, montant ->
-                            launchUssdCode(numero, montant)
+                        repository.enqueueRefunds(pendingList!!)
+                        repository.startProcessing { transaction ->
+                            launchUssdCode(transaction)
                         }
                     }
                 }
             }
     }
 
-    private fun updateUi(list: List<TransactionInfoTable>) {
-        val items = list.map { tx ->
+    private fun updateUi(list: List<RefundInfoTable>) {
+        val items = list.map { rf ->
+            val TwoFirstDigitOfNumber=rf.phoneNumber.take(2)
+            val carrier = if(TwoFirstDigitOfNumber.last() in listOM)"Orange money" else "Moov money"
             TransactionInfoItem(
-                montant       = tx.montant,
-                transactionId = tx.transactionId,
-                numero        = tx.numero,
-                operateur     = tx.operateur,
-                dateCreation  = tx.date_creation,
-                comment       = tx.comment ?: "",
-                status        = tx.status
+                montant       = rf.amount,
+                transactionId = rf.refundId,
+                numero        = rf.phoneNumber,
+                operateur     = carrier,
+                dateCreation  = rf.createdAt,
+                comment       = rf.refundStatus,
+                status        = rf.status
             )
         }
         binding.scrollView.adapter = PaiementEncoursAdapter(items)
     }
 
-    private fun launchUssdCode(numero: String, montant: Int) {
+    private fun launchUssdCode(transaction: RefundInfoTable) {
         if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CALL_PHONE)
             != PackageManager.PERMISSION_GRANTED) return
 
         try {
-            val ussdCode = "*144*2*$numero*$montant#"
+            val ussdCode = "*144*2*${transaction.phoneNumber}*${transaction.amount}#"
             val encodedUssd = ussdCode.replace("#", Uri.encode("#"))
             val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$encodedUssd"))
             startActivity(intent)

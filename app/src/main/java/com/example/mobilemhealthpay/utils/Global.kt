@@ -26,6 +26,7 @@ class Global {
         const val NOTIFICATION_ID = 1
         const val REQUEST_PERMISSION_CODE = 200
         const val Bearer="Bearer "
+        const val PAGE_SIZE = 100
         const val number1 = "+22676600150"
         const val secret_key="Q6rMfr7cRNhVaUY88xoEq7gIP_BgLC2iOgoTGcgdBe4"
         const val NUMBER_OF_REQUEST=5
@@ -36,6 +37,7 @@ class Global {
          */
         const val TRANSACTION_PASSWORD="2011"
         const val SIM_SLOT=0
+        const val TO_REFUND = "to_refund"
         fun checkPermission(context: Context, permissions: ArrayList<String>): Boolean {
             for (p in permissions) {
                 if (ContextCompat.checkSelfPermission(context, p) != PackageManager.PERMISSION_GRANTED) return false
