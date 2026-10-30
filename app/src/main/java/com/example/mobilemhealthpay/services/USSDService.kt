@@ -143,8 +143,6 @@ class USSDService : AccessibilityService() {
 
     private fun dismissDialog(node: AccessibilityNodeInfo) {
         findAndClickButton(node, "Cancel", "Close", "Annuler", "Fermer", "OK")
-        // Signal success only if we didn't signal failure/insufficient funds earlier
-        repository.signalOperationComplete(SharedRepository.UssdResult.Success)
     }
 
     override fun onInterrupt() {}

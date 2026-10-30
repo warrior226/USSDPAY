@@ -8,11 +8,13 @@ import com.example.mobilemhealthpay.data.remote.dto.VirementDto
 import com.example.mobilemhealthpay.domain.usecases.TransactionUseCase
 import timber.log.Timber
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicBoolean
@@ -39,6 +41,7 @@ class SharedRepository @Inject constructor(
     private var refundQueue = Channel<RefundInfoTable>(Channel.UNLIMITED)
     private var currentDeferred: CompletableDeferred<UssdResult>? = null
     private val enqueuedIds = Collections.synchronizedSet(mutableSetOf<String>())
+    private val failedRetries = Collections.synchronizedList(mutableListOf<RefundInfoTable>())
     private val _isQueueEmpty = MutableStateFlow(true)
     val isQueueEmpty: StateFlow<Boolean> = _isQueueEmpty.asStateFlow()
     private val isProcessing = AtomicBoolean(false)
@@ -69,6 +72,7 @@ class SharedRepository @Inject constructor(
     suspend fun resumeAfterRecharge(pendingRefunds: List<RefundInfoTable>) {
         _isFundsInsufficient.value = false
         enqueuedIds.clear()
+        failedRetries.clear()
         _isQueueEmpty.value = true
         refundQueue = Channel(Channel.UNLIMITED)
         enqueueRefunds(pendingRefunds)
@@ -86,6 +90,7 @@ class SharedRepository @Inject constructor(
 
     // ----- Core Sequential Processor -----
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     suspend fun startProcessing(
         launchUssd: (RefundInfoTable) -> Unit
     ) {
@@ -131,6 +136,16 @@ class SharedRepository @Inject constructor(
                     }
                 }
                 delay(TransactionConfig.BETWEEN_TX_DELAY_MS)
+
+                // If main queue is empty, re-enqueue retries
+                if (refundQueue.isEmpty && failedRetries.isNotEmpty()) {
+                    val toRetry = synchronized(failedRetries) {
+                        val list = ArrayList(failedRetries)
+                        failedRetries.clear()
+                        list
+                    }
+                    toRetry.forEach { refundQueue.send(it) }
+                }
             }
         } finally {
             isProcessing.set(false)
@@ -141,7 +156,7 @@ class SharedRepository @Inject constructor(
 
     private suspend fun reportTransactionStatus(refund: RefundInfoTable, status: String, reason: String) {
         try {
-            val reportFlow = if (refund.isRefund == 1) {
+            val resultResource = (if (refund.isRefund == 1) {
                 if (status == "success") {
                     transactionUseCase.completeRefund(Global.secret_key, refund.refundId, reason)
                 } else {
@@ -149,32 +164,30 @@ class SharedRepository @Inject constructor(
                 }
             } else {
                 transactionUseCase.reportTransactionAttempt(Global.secret_key, refund.refundId, status)
-            }
+            }).first { it !is Resource.Progress }
 
-            reportFlow.collect { resource ->
-                if (resource is Resource.Success) {
-                    val data = resource.data
-                    if (data is ApiResponse<*>) {
-                        if (data.status == 1) {
-                            val responseData = data.data
-                            val existingTransaction = transactionUseCase.getRefundById(refund.refundId)
-                            existingTransaction?.let { it ->
-                                val updated = when (responseData) {
-                                    is VirementDto -> it.copy(
-                                        refundStatus = responseData.status,
-                                        providerTransactionId = responseData.paymentRef ?: it.providerTransactionId,
-                                        lastAttemptAt = System.currentTimeMillis()
-                                    )
-                                    is RefundCompleteDto -> it.copy(
-                                        refundStatus = responseData.refundStatus,
-                                        lastAttemptAt = System.currentTimeMillis()
-                                    )
-                                    else -> it
-                                }
-                                registerRefund(updated)
+            if (resultResource is Resource.Success) {
+                val data = resultResource.data
+                if (data is ApiResponse<*>) {
+                    if (data.status == 1) {
+                        val responseData = data.data
+                        val existingTransaction = transactionUseCase.getRefundById(refund.refundId)
+                        existingTransaction?.let { it ->
+                            val updated = when (responseData) {
+                                is VirementDto -> it.copy(
+                                    refundStatus = responseData.status,
+                                    providerTransactionId = responseData.paymentRef ?: it.providerTransactionId,
+                                    lastAttemptAt = System.currentTimeMillis()
+                                )
+                                is RefundCompleteDto -> it.copy(
+                                    refundStatus = responseData.refundStatus,
+                                    lastAttemptAt = System.currentTimeMillis()
+                                )
+                                else -> it
                             }
-                            Timber.d("reportTransactionStatus success: ${refund.refundId} -> $status")
+                            registerRefund(updated)
                         }
+                        Timber.d("reportTransactionStatus success: ${refund.refundId} -> $status")
                     }
                 }
             }
@@ -204,9 +217,7 @@ class SharedRepository @Inject constructor(
             // Call report API on server when permanently failed after 3 attempts
             reportTransactionStatus(updatedRefund, "failed", reason)
         } else {
-            // Wait 10 seconds before trying again
-            delay(10000)
-            refundQueue.send(updatedRefund)
+            failedRetries.add(updatedRefund)
         }
     }
 
@@ -216,6 +227,9 @@ class SharedRepository @Inject constructor(
 
     fun updateBalance(balance: String) {
         _currentBalance.value = balance
+        if (!balance.contains("insuffisant", ignoreCase = true)) {
+            _isFundsInsufficient.value = false
+        }
     }
 
     fun clearRefundInfo() {

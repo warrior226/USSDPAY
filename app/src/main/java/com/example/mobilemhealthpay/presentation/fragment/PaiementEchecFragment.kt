@@ -1,5 +1,6 @@
 package com.example.mobilemhealthpay.presentation.fragment
 
+import android.app.DatePickerDialog
 import android.os.Bundle
 import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
@@ -7,6 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LiveData
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -17,6 +19,7 @@ import com.example.mobilemhealthpay.presentation.adapters.TransactionInfoItem
 import com.example.mobilemhealthpay.viewmodel.TransactionViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import java.util.Calendar
 import javax.inject.Inject
 
 
@@ -29,6 +32,12 @@ class PaiementEchecFragment : Fragment() {
     private val viewModel: TransactionViewModel by viewModels()
     private var type: String = "REFUND"
     val listOM=listOf('4','5','6','7')
+
+    private var selectedDay: String? = null
+    private var selectedMonth: String? = null
+    private var selectedYear: String? = null
+    private var currentLiveData: LiveData<List<com.example.mobilemhealthpay.data.entity.RefundInfoTable>>? = null
+
     companion object {
         fun newInstance(type: String): PaiementEchecFragment {
             val fragment = PaiementEchecFragment()
@@ -50,22 +59,63 @@ class PaiementEchecFragment : Fragment() {
     ): View {
         binding = FragmentPaiementEchecBinding.inflate(layoutInflater)
 
-        viewLifecycleOwner.lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                oberveViewModel()
-            }
-        }
+        setupListeners()
+        oberveViewModel()
 
         return binding.root
     }
 
+    private fun setupListeners() {
+        binding.btnFilterDate.setOnClickListener {
+            showDatePicker()
+        }
+
+        binding.btnClearFilter.setOnClickListener {
+            clearFilter()
+        }
+    }
+
+    private fun showDatePicker() {
+        val calendar = Calendar.getInstance()
+        val year = calendar.get(Calendar.YEAR)
+        val month = calendar.get(Calendar.MONTH)
+        val day = calendar.get(Calendar.DAY_OF_MONTH)
+
+        DatePickerDialog(requireContext(), { _, y, m, d ->
+            selectedYear = y.toString()
+            selectedMonth = String.format("%02d", m + 1)
+            selectedDay = String.format("%02d", d)
+
+            binding.tvSelectedDate.text = "$selectedDay/$selectedMonth/$selectedYear"
+            binding.btnClearFilter.visibility = View.VISIBLE
+
+            oberveViewModel()
+        }, year, month, day).show()
+    }
+
+    private fun clearFilter() {
+        selectedDay = null
+        selectedMonth = null
+        selectedYear = null
+        binding.tvSelectedDate.text = "Toutes les dates"
+        binding.btnClearFilter.visibility = View.GONE
+        oberveViewModel()
+    }
+
     fun oberveViewModel() {
         val isRefund = if (type == "REFUND") 1 else 0
-        appDataBase.refundDao()
-            .getFailedRefunds(isRefund)
-            .observe(viewLifecycleOwner) { joinedList ->
-                updateUi(joinedList)
-            }
+        
+        currentLiveData?.removeObservers(viewLifecycleOwner)
+
+        currentLiveData = if (selectedDay != null && selectedMonth != null && selectedYear != null) {
+            appDataBase.refundDao().getRefundsByDate(2, isRefund, selectedDay!!, selectedMonth!!, selectedYear!!)
+        } else {
+            appDataBase.refundDao().getFailedRefunds(isRefund)
+        }
+
+        currentLiveData?.observe(viewLifecycleOwner) { joinedList ->
+            updateUi(joinedList)
+        }
     }
 
     private fun updateUi(joinedList: List<com.example.mobilemhealthpay.data.entity.RefundInfoTable>?) {

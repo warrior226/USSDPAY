@@ -2,14 +2,32 @@ package com.example.mobilemhealthpay.data.remote.dto
 
 import com.squareup.moshi.Json
 import com.example.mobilemhealthpay.data.entity.RefundResponseEntity
+import com.google.gson.annotations.SerializedName
 
 data class VirementResponseDto(
-    @field:Json(name = "status") val status: Int,
-    @field:Json(name = "message") val message: String,
-    @field:Json(name = "data") val data: List<VirementDto>,
-    @field:Json(name = "page") val page: Int,
-    @field:Json(name = "page_size") val pageSize: Int,
-    @field:Json(name = "total") val total: Int
+    @field:Json(name = "status")
+    @SerializedName("status")
+    val status: Int,
+
+    @field:Json(name = "message")
+    @SerializedName("message")
+    val message: String,
+
+    @field:Json(name = "data")
+    @SerializedName("data")
+    val data: List<VirementDto>,
+
+    @field:Json(name = "page")
+    @SerializedName("page")
+    val page: Int,
+
+    @field:Json(name = "page_size")
+    @SerializedName("page_size")
+    val pageSize: Int,
+
+    @field:Json(name = "total")
+    @SerializedName("total")
+    val total: Int
 ) {
     fun toModel(): RefundResponseEntity {
         return RefundResponseEntity(

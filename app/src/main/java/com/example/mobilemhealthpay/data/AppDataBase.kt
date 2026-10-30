@@ -26,7 +26,7 @@ import com.example.mobilemhealthpay.utils.Converters
         VirementInfoTable::class,
         TransactionInfoTable::class
     ],
-    version = 1
+    version = 2
 )
 @TypeConverters(Converters::class)
 abstract class AppDataBase : RoomDatabase() {

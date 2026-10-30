@@ -49,4 +49,16 @@ interface TransactionInfoDao {
 
     @Query("UPDATE transaction_info SET numero = :newNumero WHERE transaction_id = :transactionId")
     suspend fun updateTransactionNumber(transactionId: String, newNumero: String)
+
+    @Query("SELECT * FROM transaction_info WHERE status = :status AND strftime('%d', date_creation) = :day AND strftime('%m', date_creation) = :month AND strftime('%Y', date_creation) = :year")
+    fun getTransactionsByDate(status: Int, day: String, month: String, year: String): LiveData<List<TransactionInfoTable>>
+
+    @Query("SELECT * FROM transaction_info WHERE status = :status AND strftime('%d', date_creation) = :day")
+    fun getTransactionsByDay(status: Int, day: String): LiveData<List<TransactionInfoTable>>
+
+    @Query("SELECT * FROM transaction_info WHERE status = :status AND strftime('%m', date_creation) = :month")
+    fun getTransactionsByMonth(status: Int, month: String): LiveData<List<TransactionInfoTable>>
+
+    @Query("SELECT * FROM transaction_info WHERE status = :status AND strftime('%Y', date_creation) = :year")
+    fun getTransactionsByYear(status: Int, year: String): LiveData<List<TransactionInfoTable>>
 }

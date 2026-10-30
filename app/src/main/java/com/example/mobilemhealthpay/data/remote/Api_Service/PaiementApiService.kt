@@ -9,6 +9,7 @@ import com.example.mobilemhealthpay.data.remote.dto.TransactionResponseDto
 import com.example.mobilemhealthpay.data.remote.dto.TransactionAttemptRequest
 import com.example.mobilemhealthpay.data.remote.dto.VirementDto
 import com.example.mobilemhealthpay.data.remote.dto.VirementResponseDto
+import com.example.mobilemhealthpay.services.WebSocketManager
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
@@ -76,7 +77,13 @@ interface PaiementApiService {
         @Body request: TransactionAttemptRequest
     ): ApiResponse<VirementDto>
 
+    @POST("api/device-info")
+    suspend fun postDeviceInfo(
+        @Header("X-Secret-Key") secretKey: String,
+        @Body deviceStatus: WebSocketManager.DeviceStatus
+    ): ApiResponse<Any>
 
+//Get refunded transactions
 
 
 

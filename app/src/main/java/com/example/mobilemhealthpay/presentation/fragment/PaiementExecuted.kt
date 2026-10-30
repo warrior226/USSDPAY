@@ -1,11 +1,14 @@
 package com.example.mobilemhealthpay.presentation.fragment
 
+import android.app.DatePickerDialog
 import android.os.Bundle
 import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.Observer
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -15,6 +18,7 @@ import com.example.mobilemhealthpay.presentation.adapters.PaiementExecutedAdapte
 import com.example.mobilemhealthpay.presentation.adapters.TransactionInfoItem
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import java.util.Calendar
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -25,6 +29,30 @@ class PaiementExecuted : Fragment() {
     private lateinit var binding: FragmentPaiementExecutedBinding
     private var type: String = "REFUND"
     val listOM=listOf('4','5','6','7')
+
+    private var selectedDay: String? = null
+    private var selectedMonth: String? = null
+    private var selectedYear: String? = null
+    private var currentObserver: Observer<List<com.example.mobilemhealthpay.data.entity.RefundInfoTable>>? = null
+    private var currentLiveData: LiveData<List<com.example.mobilemhealthpay.data.entity.RefundInfoTable>>? = null
+
+    private val createDocumentLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    ) { uri ->
+        uri?.let {
+            val transactions = currentLiveData?.value ?: emptyList()
+            if (transactions.isNotEmpty()) {
+                val success = com.example.mobilemhealthpay.utils.DocxExporter.exportTransactionsToDocx(requireContext(), it, transactions)
+                if (success) {
+                    android.widget.Toast.makeText(requireContext(), "Fichier exporté avec succès !", android.widget.Toast.LENGTH_LONG).show()
+                } else {
+                    android.widget.Toast.makeText(requireContext(), "Erreur lors de l'exportation", android.widget.Toast.LENGTH_LONG).show()
+                }
+            } else {
+                android.widget.Toast.makeText(requireContext(), "Aucune transaction à exporter", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     companion object {
         fun newInstance(type: String): PaiementExecuted {
@@ -47,22 +75,69 @@ class PaiementExecuted : Fragment() {
     ): View {
         binding = FragmentPaiementExecutedBinding.inflate(layoutInflater)
 
-        viewLifecycleOwner.lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                oberveViewModel()
-            }
-        }
+        setupListeners()
+        oberveViewModel()
 
         return binding.root
     }
 
+    private fun setupListeners() {
+        binding.btnFilterDate.setOnClickListener {
+            showDatePicker()
+        }
+
+        binding.btnClearFilter.setOnClickListener {
+            clearFilter()
+        }
+
+        binding.btnExportDocx.setOnClickListener {
+            val label = if (type == "REFUND") "remboursements" else "virements"
+            createDocumentLauncher.launch("liste_des_${label}_effectues.docx")
+        }
+    }
+
+    private fun showDatePicker() {
+        val calendar = Calendar.getInstance()
+        val year = calendar.get(Calendar.YEAR)
+        val month = calendar.get(Calendar.MONTH)
+        val day = calendar.get(Calendar.DAY_OF_MONTH)
+
+        DatePickerDialog(requireContext(), { _, y, m, d ->
+            selectedYear = y.toString()
+            selectedMonth = String.format("%02d", m + 1)
+            selectedDay = String.format("%02d", d)
+
+            binding.tvSelectedDate.text = "$selectedDay/$selectedMonth/$selectedYear"
+            binding.btnClearFilter.visibility = View.VISIBLE
+            
+            oberveViewModel()
+        }, year, month, day).show()
+    }
+
+    private fun clearFilter() {
+        selectedDay = null
+        selectedMonth = null
+        selectedYear = null
+        binding.tvSelectedDate.text = "Toutes les dates"
+        binding.btnClearFilter.visibility = View.GONE
+        oberveViewModel()
+    }
+
     fun oberveViewModel() {
         val isRefund = if (type == "REFUND") 1 else 0
-        appDataBase.refundDao()
-            .getSuccessfulRefunds(isRefund)
-            .observe(viewLifecycleOwner) { joinedList ->
-                updateUi(joinedList)
-            }
+        
+        // Clean up previous observer
+        currentLiveData?.removeObservers(viewLifecycleOwner)
+
+        currentLiveData = if (selectedDay != null && selectedMonth != null && selectedYear != null) {
+            appDataBase.refundDao().getRefundsByDate(1, isRefund, selectedDay!!, selectedMonth!!, selectedYear!!)
+        } else {
+            appDataBase.refundDao().getSuccessfulRefunds(isRefund)
+        }
+
+        currentLiveData?.observe(viewLifecycleOwner) { joinedList ->
+            updateUi(joinedList)
+        }
     }
 
     private fun updateUi(joinedList: List<com.example.mobilemhealthpay.data.entity.RefundInfoTable>?) {

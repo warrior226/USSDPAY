@@ -30,4 +30,16 @@ interface RefundDao {
 
     @Query("SELECT * FROM refund_info WHERE refund_id = :refundId")
     suspend fun getRefundById(refundId: String): RefundInfoTable?
+
+    @Query("SELECT * FROM refund_info WHERE status = :status AND is_refund = :isRefund AND strftime('%d', created_at) = :day AND strftime('%m', created_at) = :month AND strftime('%Y', created_at) = :year")
+    fun getRefundsByDate(status: Int, isRefund: Int, day: String, month: String, year: String): LiveData<List<RefundInfoTable>>
+
+    @Query("SELECT * FROM refund_info WHERE status = :status AND is_refund = :isRefund AND strftime('%d', created_at) = :day")
+    fun getRefundsByDay(status: Int, isRefund: Int, day: String): LiveData<List<RefundInfoTable>>
+
+    @Query("SELECT * FROM refund_info WHERE status = :status AND is_refund = :isRefund AND strftime('%m', created_at) = :month")
+    fun getRefundsByMonth(status: Int, isRefund: Int, month: String): LiveData<List<RefundInfoTable>>
+
+    @Query("SELECT * FROM refund_info WHERE status = :status AND is_refund = :isRefund AND strftime('%Y', created_at) = :year")
+    fun getRefundsByYear(status: Int, isRefund: Int, year: String): LiveData<List<RefundInfoTable>>
 }

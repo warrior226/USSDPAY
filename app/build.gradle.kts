@@ -84,6 +84,7 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     implementation (libs.scalars)
+    implementation(libs.socket.io)
 }
 // Allow references to generated code
 kapt {

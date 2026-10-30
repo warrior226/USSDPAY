@@ -1,5 +1,5 @@
 [versions]
-agp = "9.0.1"
+agp = "9.3.1"
 kotlin = "2.2.10"
 coreKtx = "1.16.0"
 junit = "4.13.2"
@@ -30,6 +30,7 @@ okhttp = "5.0.0-alpha.14"
 eventbus = "3.3.1"
 ussd="1.4.a"
 securityCrypto = "1.1.0-alpha06"
+socket-io = "2.1.2"
 
 
 
@@ -72,6 +73,7 @@ gson-converter={group="com.squareup.retrofit2", name="converter-gson", version.r
 scalars = { module = "com.squareup.retrofit2:converter-scalars", version.ref = "retrofit" }
 ussd-library={module="com.github.romellfudi.VoIpUSSD:kotlin-ussd-library",version.ref="ussd"}
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
+socket-io = { group = "io.socket", name = "socket.io-client", version.ref = "socket-io" }
 
 
 

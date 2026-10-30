@@ -1,6 +1,7 @@
 package com.example.mobilemhealthpay
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -42,7 +43,9 @@ class MainActivity : AppCompatActivity() {
     // Required permissions
     private val requiredPermissions = arrayOf(
         Manifest.permission.CALL_PHONE,
-        Manifest.permission.READ_PHONE_STATE
+        Manifest.permission.READ_PHONE_STATE,
+        Manifest.permission.RECEIVE_SMS,
+        Manifest.permission.READ_SMS
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -149,14 +152,32 @@ class MainActivity : AppCompatActivity() {
         // Check accessibility service
         checkAccessibilityPermission()
 
+        // Check battery optimization
+        requestIgnoreBatteryOptimizations()
+
         // Check overlay permission if needed
         checkOverlayPermission()
+    }
 
-        // Fetch paiements
-      //  viewModel.fetchPaiements()
-
-        // Launch USSD code
-        //launchUssdCode()
+    private fun requestIgnoreBatteryOptimizations() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val packageName = packageName
+            val pm = getSystemService(POWER_SERVICE) as android.os.PowerManager
+            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                AlertDialog.Builder(this)
+                    .setTitle("Battery Optimization")
+                    .setMessage("To ensure USSD automation works reliably in the background, please disable battery optimization for this app.")
+                    .setPositiveButton("Disable") { _, _ ->
+                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                        intent.data = Uri.parse("package:$packageName")
+                        startActivity(intent)
+                    }
+                    .setNegativeButton("Later") { dialog, _ ->
+                        dialog.dismiss()
+                    }
+                    .show()
+            }
+        }
     }
 
     private fun showPermissionDeniedDialog() {
